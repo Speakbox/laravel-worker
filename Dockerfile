@@ -1,36 +1,35 @@
-FROM php:7.3-cli AS setup
+FROM php:7.3.7-cli AS setup
 MAINTAINER Valentin Prugnaud <valentin@speakbox.ca>
 
-# Install php dependencies
+# Install nginx and php dependencies
 RUN apt-get update \
-    # gd
-    && apt-get install -y --no-install-recommends curl git libzip-dev libfreetype6-dev libjpeg-dev libpng-dev libwebp-dev  \
+    # Install packages
+    && apt-get install -y --no-install-recommends build-essential supervisor curl git libzip-dev libfreetype6-dev libjpeg-dev libpng-dev libwebp-dev  \
+    # Install PHP extensions
     && docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ --with-png-dir=/usr/include/ --with-webp-dir=/usr/include/ \
-    && docker-php-ext-install gd \
-    # bcmath
-    && docker-php-ext-install bcmath \
-    # ctype
-    && docker-php-ext-install ctype \
-    # json
-    && docker-php-ext-install json \
-    # mbstring
-    && docker-php-ext-install mbstring \
-    # pdo_mysql
-    && docker-php-ext-install pdo_mysql \
-    # opcache
+    && docker-php-ext-install gd bcmath ctype json mbstring pdo_mysql zip \
     && docker-php-ext-enable opcache \
-    # zip
-    && docker-php-ext-install zip \
-    # clean up
+    # Clean up
     && apt-get remove -y --purge software-properties-common \
-    && apt-get -y autoremove \
+    && apt-get autoremove -y  \
     && apt-get autoclean -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/pear/ \
-    && rm -rf /var/tmp/* \
-    && rm -rf /tmp/*
+    && rm -rf /var/lib/apt/lists/* /tmp/pear/ /var/tmp/* /tmp/*
 
 # Install composer
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 
+# Install prestissimo for faster composer installs
+# https://github.com/hirak/prestissimo
 RUN composer global require hirak/prestissimo
+
+# Redirect log to stderr
+RUN ln -sf /dev/stderr /var/log/fpm-php.www.log
+
+RUN chown www-data:www-data /var/www
+
+# Copy supervisor config
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+WORKDIR /etc/supervisor
+
+CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
